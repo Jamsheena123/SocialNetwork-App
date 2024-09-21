@@ -2,6 +2,8 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+
 
 
 class CustomUser(AbstractUser):
@@ -47,14 +49,18 @@ class FriendRequest(models.Model):
         unique_together = ('sender', 'receiver')
 
 
+
 class Friendship(models.Model):
-    user1 = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='friendship_user1', on_delete=models.CASCADE)
-    user2 = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='friendship_user2', on_delete=models.CASCADE)
-    accepted = models.BooleanField(default=False)
+    user1 = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='friendships1', on_delete=models.CASCADE)
+    user2 = models.ForeignKey(settings.AUTH_USER_MODEL, related_name='friendships2', on_delete=models.CASCADE)
+    accepted = models.BooleanField(default=False)  # Add this line
     created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('user1', 'user2')
+
     def __str__(self):
-        return f'{self.user1} - {self.user2} ({self.accepted})'
+        return f"{self.user1} is friends with {self.user2}"
 
 class UserActivity(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -75,12 +81,5 @@ class UserBlock(models.Model):
         unique_together = ('blocker', 'blocked')
 
 
-
-# User = get_user_model()
-
-# # Creating a new user with a password
-# user = User(username='sahala', email='sahala14@gmail.com')
-# user.set_password('sahala@123')
-# user.save()
 
 

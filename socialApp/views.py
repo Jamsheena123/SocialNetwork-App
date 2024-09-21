@@ -31,14 +31,54 @@ class SignupView(generics.CreateAPIView):
             return Response({"detail": "User already exists."}, status=status.HTTP_400_BAD_REQUEST)
         
         request.data['email'] = email  
-        
- 
-        return super().create(request, *args, **kwargs)
+        response = super().create(request, *args, **kwargs)
+
+        # Automatically create UserProfile after user registration
+        user = User.objects.get(email=email)
+        UserProfile.objects.create(user=user)
+
+        return response
 
 
 
 class LoginThrottle(UserRateThrottle):
     rate = '5/minute'
+
+
+
+class LoginView(APIView):
+    throttle_classes = [LoginThrottle]  # Throttle for rate-limiting
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        email = request.data.get("email", "").lower()  # Case-insensitive email
+        password = request.data.get("password")
+
+        # Authenticate using email
+        user = authenticate(request, email=email, password=password)
+
+        if user is not None:
+            # Generate JWT token for authenticated user
+            refresh = RefreshToken.for_user(user)
+            user_data = CustomUserSerializer(user).data
+
+            # Log user activity
+            UserActivity.objects.create(
+                user=user,
+                action="login",
+                timestamp=timezone.now()
+            )
+
+            return Response({
+                'access_token': str(refresh.access_token),
+                'refresh_token': str(refresh),
+                'user': user_data
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'error': 'Invalid credentials'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class LoginView(APIView):
@@ -73,6 +113,9 @@ class FriendRequestThrottle(UserRateThrottle):
     rate = '3/minute'
 
 
+
+
+
 class FriendRequestViewSet(viewsets.ModelViewSet):
     queryset = FriendRequest.objects.all()
     serializer_class = FriendRequestSerializer
@@ -94,20 +137,30 @@ class FriendRequestViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(pending_requests, many=True)
         return Response(serializer.data)
 
+   
+
     @action(detail=True, methods=['patch'])
     def accept(self, request, pk=None):
         """Accept a friend request"""
         try:
+            # Retrieve the friend request for the authenticated user
             friend_request = FriendRequest.objects.get(pk=pk, receiver=request.user, accepted=False, rejected=False)
         except FriendRequest.DoesNotExist:
             return Response({"detail": "Friend request not found or already processed."}, status=status.HTTP_404_NOT_FOUND)
 
         with transaction.atomic():
+            # Mark the friend request as accepted
             friend_request.accepted = True
+            friend_request.rejected = False  # Ensure rejected is set to False if you have that field
             friend_request.save()
-            # Create a friendship (if Friendship model exists)
 
-        return Response({"detail": "Friend request accepted."}, status=status.HTTP_200_OK)
+            # Create a friendship
+            Friendship.objects.create(user1=friend_request.sender, user2=friend_request.receiver, accepted=True)
+
+        return Response({"detail": "Friend request accepted and friendship created."}, status=status.HTTP_200_OK)
+
+
+    
 
     @action(detail=True, methods=['patch'])
     def reject(self, request, pk=None):
@@ -139,30 +192,37 @@ class FriendRequestViewSet(viewsets.ModelViewSet):
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
     serializer_class = UserProfileSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        # Allow users to view their own profile
         return UserProfile.objects.filter(user=self.request.user)
 
     @action(detail=False, methods=['get'])
     def me(self, request):
-        """Get the current user's profile."""
-        profile = self.get_queryset().first()
-        if not profile:
-            return Response({"detail": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
+        """Get the current user's profile, create if it doesn't exist."""
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
         serializer = self.get_serializer(profile)
         return Response(serializer.data)
 
-    def perform_update(self, serializer):
-        # Allow updating only for the logged-in user's profile
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        """Create or update the user profile."""
+        user = request.user
+        bio = request.data.get('bio')
+        profile_picture = request.FILES.get('profile_picture')
+
+        # Check if the profile already exists
+        profile, created = UserProfile.objects.get_or_create(user=user)
+
+        # Update bio and profile picture
+        profile.bio = bio if bio else profile.bio
+        profile.profile_picture = profile_picture if profile_picture else profile.profile_picture
+        profile.save()
+
+        serializer = self.get_serializer(profile)
+        return Response(serializer.data)
 
 
 # --- Friendship Management ---
-
-class FriendshipThrottle(UserRateThrottle):
-    rate = '1/minute'
 
 class FriendshipViewSet(viewsets.ModelViewSet):
     serializer_class = FriendshipSerializer
@@ -177,43 +237,48 @@ class FriendshipViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def friends(self, request):
-        """List the current user's accepted friends."""
         user = request.user
-        friendships = self.get_queryset()
+        friendships = self.get_queryset()  # Retrieves accepted friendships
+
+        # Use a list to store serialized friendships
         friends = []
         for friendship in friendships:
-            try:
-                if friendship.user1 == user:
-                    friends.append(friendship.user2)
-                else:
-                    friends.append(friendship.user1)
-            except CustomUser.DoesNotExist:
-                # Log the error or handle it as needed
-                continue
-        serializer = self.get_serializer(friends, many=True)
-        return Response(serializer.data)
+            friend = friendship.user2 if friendship.user1 == user else friendship.user1
+            friends.append({
+                "id": friend.id,
+                "username": friend.username,
+                "accept": friendship.accepted,
+                "created_at": friendship.created_at,  # Include the creation timestamp
+            })
+
+        return Response(friends)
+
+
 
 # --- User Activity Logging ---
 
+ 
 class UserActivityViewSet(viewsets.ModelViewSet):
-    queryset = UserActivity.objects.all()
     serializer_class = UserActivitySerializer
     permission_classes = [IsAuthenticated]
-
     def get_queryset(self):
-        user = self.request.user
-        return UserActivity.objects.filter(user=user)
+        # Only return the activities for the authenticated user
+        return UserActivity.objects.filter(user=self.request.user).order_by('-timestamp')
 
-    @action(detail=False, methods=['get'])
-    def my_activity(self, request):
-        """Get the current user's activity log."""
-        user = request.user
-        activities = self.get_queryset()
-        print(f'User: {user}, Activities: {activities}')  # Debug print
-        serializer = self.get_serializer(activities, many=True)
+    def create(self, request, *args, **kwargs):
+        # Automatically associate the activity with the authenticated user
+        data = request.data.copy()
+        data['user'] = request.user.id
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def list(self, request, *args, **kwargs):
+        # List all activities for the authenticated user
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-
-# --- User Blocking ---
 
 class UserBlockViewSet(viewsets.ModelViewSet):
     queryset = UserBlock.objects.all()

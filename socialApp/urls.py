@@ -8,12 +8,13 @@ from .views import (
     FriendshipViewSet,
     UserActivityViewSet,
     UserBlockViewSet
+
 )
 
 router = DefaultRouter()
 router.register(r'friend-requests', FriendRequestViewSet, basename='friendrequest')
-router.register(r'user-profiles', UserProfileViewSet, basename='userprofile')
-router.register(r'friendships', FriendshipViewSet, basename='friendship')
+router.register(r'profiles', UserProfileViewSet, basename='userprofile')
+router.register(r'friendships', FriendRequestViewSet, basename='friendship')
 router.register(r'user-activities', UserActivityViewSet, basename='useractivity')
 router.register(r'user-blocks', UserBlockViewSet, basename='userblock')
 
