@@ -5,7 +5,7 @@ from .views import (
     LoginView,
     FriendRequestViewSet,
     UserProfileViewSet,
-    FriendshipViewSet,,
+    FriendshipViewSet,
     UserBlockViewSet
 )
 
@@ -20,3 +20,21 @@ urlpatterns = [
     path('login/', LoginView.as_view(), name='login'),
     path('', include(router.urls)),  # Include the router's URLs
 ]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

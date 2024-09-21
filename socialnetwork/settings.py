@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -95,7 +96,7 @@ DATABASES = {
         'NAME': 'networking_platform_db',  # Update this to your correct database name
         'USER': 'postgres',
         'PASSWORD': 'jamsheena@123',
-        'HOST': 'localhost',
+        'HOST': 'postgres',
         'PORT': '5432',
     }
 }
@@ -191,4 +192,4 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')

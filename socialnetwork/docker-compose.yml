@@ -1,0 +1,56 @@
+# socialnetwork/docker-compose.yml
+version: '3.9'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:13
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      POSTGRES_DB: networking_platform_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: jamsheena@123
+    networks:
+      - app_network
+
+  # Redis Cache
+  redis:
+    image: redis:6
+    ports:
+      - "6379:6379"
+    networks:
+      - app_network
+
+  # Django Application
+  web:
+    build: .
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=1
+      - DJANGO_SECRET_KEY=django-insecure-%t(!#u^(4022oaa1dyo-36m)31+u&%uz&+iq^p2^lq(bz9e!t1
+      - POSTGRES_DB=networking_platform_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=jamsheena@123
+      - POSTGRES_HOST=postgres  # Corrected this
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - app_network
+
+volumes:
+  postgres_data:
+
+networks:
+  app_network:
+    driver: bridge
