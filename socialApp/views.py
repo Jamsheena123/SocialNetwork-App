@@ -193,25 +193,7 @@ class FriendshipViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(friends, many=True)
         return Response(serializer.data)
 
-# --- User Activity Logging ---
 
-class UserActivityViewSet(viewsets.ModelViewSet):
-    queryset = UserActivity.objects.all()
-    serializer_class = UserActivitySerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        user = self.request.user
-        return UserActivity.objects.filter(user=user)
-
-    @action(detail=False, methods=['get'])
-    def my_activity(self, request):
-        """Get the current user's activity log."""
-        user = request.user
-        activities = self.get_queryset()
-        print(f'User: {user}, Activities: {activities}')  # Debug print
-        serializer = self.get_serializer(activities, many=True)
-        return Response(serializer.data)
 
 # --- User Blocking ---
 
